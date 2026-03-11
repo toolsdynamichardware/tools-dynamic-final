@@ -1,0 +1,114 @@
+import { useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { Shield, Loader2, Mail, Lock, UserPlus } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+
+const Register = () => {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: "error" | "success" } | null>(null);
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      
+      if (error) throw error;
+      
+      // Since email confirmation is off, they are instantly logged in.
+      // Redirect them straight to the shop!
+      navigate("/shop");
+      
+    } catch (error: any) {
+      setMessage({ text: error.message || "An error occurred during registration", type: "error" });
+      setLoading(false);
+    } 
+  };
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8 rounded-2xl bg-white p-10 shadow-xl border border-border">
+        
+        {/* Header */}
+        <div className="text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent/10">
+            <UserPlus className="h-6 w-6 text-accent" />
+          </div>
+          <h2 className="mt-6 font-heading text-3xl font-bold uppercase tracking-tight text-navy">
+            Create an Account
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Join Tools Dynamic & Hardware today
+          </p>
+        </div>
+
+        {/* Form */}
+        <form className="mt-8 space-y-6" onSubmit={handleSignUp}>
+          {message && (
+            <div className={`p-4 rounded-md text-sm font-medium ${message.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
+              {message.text}
+            </div>
+          )}
+
+          <div className="space-y-4 rounded-md shadow-sm">
+            <div className="relative">
+              <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-10 py-3 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                placeholder="Email address"
+              />
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-10 py-3 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                placeholder="Create a Password (min 6 characters)"
+                minLength={6}
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-8 py-3 font-heading text-sm font-bold uppercase tracking-widest text-navy transition-all hover:bg-accent/90 hover:shadow-lg disabled:opacity-70"
+          >
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Sign Up"}
+          </button>
+        </form>
+
+        {/* Toggle Login */}
+        <div className="text-center mt-4">
+          <Link
+            to="/login"
+            className="text-sm font-medium text-navy hover:underline"
+          >
+            Already have an account? Sign In
+          </Link>
+        </div>
+        
+        <div className="mt-4 text-center">
+             <Link to="/" className="text-xs text-muted-foreground hover:text-navy">← Return to Home</Link>
+        </div>
+      </div>
+    </main>
+  );
+};
+
+export default Register;
