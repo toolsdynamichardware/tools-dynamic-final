@@ -107,12 +107,23 @@ const Cart = () => {
         }
       });
 
-      if (checkoutError || !checkoutData?.redirectUrl) {
-        // If Yoco fails, delete the pending order so they can try again cleanly
-        if (orderData?.id) {
-          await supabase.from('orders').delete().eq('id', orderData.id);
-        }
-        throw new Error(checkoutData?.error || "Failed to initialize secure checkout.");
+      // --- ADVANCED ERROR HANDLING ---
+      // 1. Check if the Edge Function crashed or couldn't be reached
+      if (checkoutError) {
+        if (orderData?.id) await supabase.from('orders').delete().eq('id', orderData.id);
+        throw new Error(`Server Error: ${checkoutError.message || "Could not connect to Edge Function"}`);
+      }
+
+      // 2. Check if Yoco rejected the request (e.g. bad key, wrong payload)
+      if (checkoutData?.error) {
+        if (orderData?.id) await supabase.from('orders').delete().eq('id', orderData.id);
+        throw new Error(`Yoco Error: ${checkoutData.error}`);
+      }
+
+      // 3. Check if we successfully got the URL
+      if (!checkoutData?.redirectUrl) {
+        if (orderData?.id) await supabase.from('orders').delete().eq('id', orderData.id);
+        throw new Error("Yoco did not return a payment link. Please try again.");
       }
 
       // Success! Clear the cart and redirect to Yoco
