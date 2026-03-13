@@ -5,52 +5,29 @@ import { supabase } from "@/lib/supabase";
 import { useState } from "react";
 import { toast } from "sonner";
 
-declare global {
-  interface Window {
-    YocoSDK: any;
-  }
-}
-
 const Cart = () => {
   const { items, removeItem, updateQuantity, totalPrice, clearCart } = useCart();
   const navigate = useNavigate();
 
-  // -- Checkout States --
-  const [checkoutStep, setCheckoutStep] = useState<1 | 2>(1); // 1 = Cart, 2 = Shipping
+  const [checkoutStep, setCheckoutStep] = useState<1 | 2>(1);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false); // NEW: Legal Agreement State
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
-  // -- Wallet States --
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [useWallet, setUseWallet] = useState(false);
 
-  // -- Form States --
   const [isCompany, setIsCompany] = useState(false);
   const [shipping, setShipping] = useState({
-    fullName: "",
-    phone: "",
-    address: "",
-    city: "",
-    province: "",
-    postalCode: "",
-    // Optional Company Fields
-    companyName: "",
-    companyRegistration: "",
-    vatNumber: ""
+    fullName: "", phone: "", address: "", city: "", province: "", postalCode: "",
+    companyName: "", companyRegistration: "", vatNumber: ""
   });
 
-  // Calculate totals
   const finalTotal = totalPrice + (totalPrice >= 1500 ? 0 : 150);
-
-  // Progress Bar Math
   const progressPercentage = Math.min((totalPrice / 1500) * 100, 100);
   const amountAway = (1500 - totalPrice).toFixed(2);
-
-  // Wallet Math
   const walletDeduction = useWallet ? Math.min(walletBalance, finalTotal) : 0;
   const amountToPay = finalTotal - walletDeduction;
 
-  // Step 1: Move from Cart to Shipping Form & Fetch Wallet Balance
   const handleProceedToShipping = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -59,16 +36,12 @@ const Cart = () => {
       return;
     }
 
-    // Fetch their current wallet balance
     const { data } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).maybeSingle();
-    if (data) {
-      setWalletBalance(data.balance);
-    }
+    if (data) setWalletBalance(data.balance);
 
     setCheckoutStep(2);
   };
 
-  // Step 2: Handle Shipping Form Submission & Payment
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCheckingOut(true);
@@ -77,7 +50,6 @@ const Cart = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      // Clean up shipping data (remove company fields if checkbox is unchecked)
       const finalShippingData = { ...shipping };
       if (!isCompany) {
         delete finalShippingData.companyName;
@@ -85,31 +57,26 @@ const Cart = () => {
         delete finalShippingData.vatNumber;
       }
 
-      // Helper function to save the order and deduct wallet funds
-      const saveOrderAndDeductWallet = async (yocoChargeId: string | null = null) => {
-        // 1. Deduct wallet balance if they used it
+      // 1. IF WALLET COVERS ENTIRE PRICE
+      if (amountToPay <= 0) {
+        toast.loading("Processing payment via Wallet...");
+
         if (walletDeduction > 0) {
           const newBalance = walletBalance - walletDeduction;
           await supabase.from('wallets').update({ balance: newBalance, updated_at: new Date() }).eq('user_id', session.user.id);
         }
 
-        // 2. Save the order
         const { error: dbError } = await supabase.from('orders').insert([{
           user_id: session.user.id,
           total_amount: finalTotal,
           status: 'Paid & Processing',
           items: items,
           shipping_details: finalShippingData,
-          yoco_charge_id: yocoChargeId
+          yoco_charge_id: null
         }]);
 
         if (dbError) throw dbError;
-      };
 
-      // IF WALLET COVERS THE ENTIRE PRICE (Bypass Yoco completely)
-      if (amountToPay <= 0) {
-        toast.loading("Processing payment via Wallet...");
-        await saveOrderAndDeductWallet();
         toast.dismiss();
         toast.success("Payment successful using your Wallet Balance!");
         clearCart();
@@ -117,61 +84,44 @@ const Cart = () => {
         return;
       }
 
-      // OTHERWISE, USE YOCO FOR THE REMAINING AMOUNT
-      if (!window.YocoSDK) {
-        toast.error("Payment gateway is loading. Please refresh and try again.");
-        setIsCheckingOut(false);
-        return;
-      }
+      // 2. YOCO V2 SECURE REDIRECT
+      toast.loading("Preparing secure checkout...");
 
-      const yoco = new window.YocoSDK({
-        publicKey: "pk_test_84401d9eP41gR3b4e4c4",
-      });
+      // Save order as PENDING before redirecting
+      const { data: orderData, error: dbError } = await supabase.from('orders').insert([{
+        user_id: session.user.id,
+        total_amount: finalTotal,
+        status: 'Pending Payment',
+        items: items,
+        shipping_details: finalShippingData,
+        yoco_charge_id: null
+      }]).select().single();
 
-      yoco.showPopup({
-        amountInCents: Math.round(amountToPay * 100),
-        currency: 'ZAR',
-        name: 'Tools Dynamic & Hardware',
-        description: 'Order Checkout',
-        callback: async (result: any) => {
-          if (result.error) {
-            toast.error(`Payment failed: ${result.error.message}`);
-            setIsCheckingOut(false);
-          } else {
-            try {
-              toast.loading("Processing payment securely...");
+      if (dbError) throw dbError;
 
-              // Charge the card via Edge Function
-              const { data: chargeData, error: chargeError } = await supabase.functions.invoke('yoco-charge', {
-                body: { token: result.id, amountInCents: Math.round(amountToPay * 100) }
-              });
-
-              if (chargeError || (chargeData && chargeData.status !== "successful")) {
-                throw new Error(chargeData?.error || "Payment declined by the bank.");
-              }
-
-              // Save order and deduct wallet
-              await saveOrderAndDeductWallet(chargeData.id);
-
-              toast.dismiss();
-              toast.success("Payment successful! Your order has been placed.");
-              clearCart();
-              navigate("/account");
-
-            } catch (err: any) {
-              console.error("Backend processing error:", err);
-              toast.dismiss();
-              toast.error(err.message || "Something went wrong saving your order.");
-              setIsCheckingOut(false);
-            }
-          }
+      // Ask Edge Function for the Yoco URL
+      const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke('yoco-charge', {
+        body: {
+          amountInCents: Math.round(amountToPay * 100),
+          currency: 'ZAR'
         }
       });
 
-      setIsCheckingOut(false);
+      if (checkoutError || !checkoutData?.redirectUrl) {
+        // If Yoco fails, delete the pending order so they can try again cleanly
+        if (orderData?.id) {
+          await supabase.from('orders').delete().eq('id', orderData.id);
+        }
+        throw new Error(checkoutData?.error || "Failed to initialize secure checkout.");
+      }
+
+      // Success! Clear the cart and redirect to Yoco
+      clearCart();
+      window.location.href = checkoutData.redirectUrl;
 
     } catch (error: any) {
       console.error("Checkout crash:", error);
+      toast.dismiss();
       toast.error(`Crash: ${error.message || "Could not open checkout."}`);
       setIsCheckingOut(false);
     }
@@ -205,10 +155,7 @@ const Cart = () => {
       <div className="container py-8">
         <div className="grid gap-8 lg:grid-cols-3">
 
-          {/* LEFT SIDE: CART ITEMS OR SHIPPING FORM */}
           <div className="lg:col-span-2">
-
-            {/* FREE DELIVERY PROGRESS BAR */}
             {checkoutStep === 1 && (
               <div className="mb-6 rounded-lg border border-accent/20 bg-accent/5 p-4 shadow-sm">
                 <div className="mb-2 flex items-center justify-between text-sm font-bold">
@@ -230,7 +177,6 @@ const Cart = () => {
               </div>
             )}
 
-            {/* STEP 1: CART VIEW */}
             {checkoutStep === 1 && (
               <>
                 <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
@@ -271,10 +217,8 @@ const Cart = () => {
               </>
             )}
 
-            {/* STEP 2: SHIPPING FORM VIEW */}
             {checkoutStep === 2 && (
               <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-
                 <div className="mb-6 flex items-center gap-3 border-b border-border pb-4">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-navy/10">
                     <MapPin className="h-5 w-5 text-navy" />
@@ -286,8 +230,6 @@ const Cart = () => {
                 </div>
 
                 <form id="shipping-form" onSubmit={handlePayment} className="space-y-5">
-
-                  {/* OPTIONAL COMPANY TOGGLE */}
                   <div className="rounded-lg border border-border bg-slate-50 p-4">
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input
@@ -302,7 +244,6 @@ const Cart = () => {
                       </div>
                     </label>
 
-                    {/* COMPANY DROP-DOWN FIELDS */}
                     {isCompany && (
                       <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-2">
                         <div className="space-y-1">
@@ -313,7 +254,6 @@ const Cart = () => {
                             value={shipping.companyName || ""}
                             onChange={e => setShipping({ ...shipping, companyName: e.target.value })}
                             className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent bg-white"
-                            placeholder="e.g. Dynamic Build PTY LTD"
                           />
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -325,17 +265,15 @@ const Cart = () => {
                               value={shipping.companyRegistration || ""}
                               onChange={e => setShipping({ ...shipping, companyRegistration: e.target.value })}
                               className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent bg-white"
-                              placeholder="e.g. 2020/123456/07"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">VAT Number (Optional)</label>
+                            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">VAT Number</label>
                             <input
                               type="text"
                               value={shipping.vatNumber || ""}
                               onChange={e => setShipping({ ...shipping, vatNumber: e.target.value })}
                               className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent bg-white"
-                              placeholder="e.g. 4123456789"
                             />
                           </div>
                         </div>
@@ -343,32 +281,31 @@ const Cart = () => {
                     )}
                   </div>
 
-                  {/* STANDARD SHIPPING FIELDS */}
                   <div className="grid gap-4 sm:grid-cols-2 pt-2">
                     <div className="space-y-1">
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name *</label>
-                      <input required type="text" value={shipping.fullName} onChange={e => setShipping({ ...shipping, fullName: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" placeholder="John Doe" />
+                      <input required type="text" value={shipping.fullName} onChange={e => setShipping({ ...shipping, fullName: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone Number *</label>
-                      <input required type="tel" value={shipping.phone} onChange={e => setShipping({ ...shipping, phone: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" placeholder="082 123 4567" />
+                      <input required type="tel" value={shipping.phone} onChange={e => setShipping({ ...shipping, phone: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm" />
                     </div>
                   </div>
 
                   <div className="space-y-1">
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Street Address *</label>
-                    <input required type="text" value={shipping.address} onChange={e => setShipping({ ...shipping, address: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" placeholder="123 Main Road, Apt 4B" />
+                    <input required type="text" value={shipping.address} onChange={e => setShipping({ ...shipping, address: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm" />
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div className="space-y-1">
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">City *</label>
-                      <input required type="text" value={shipping.city} onChange={e => setShipping({ ...shipping, city: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" placeholder="Pretoria" />
+                      <input required type="text" value={shipping.city} onChange={e => setShipping({ ...shipping, city: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Province *</label>
-                      <select required value={shipping.province} onChange={e => setShipping({ ...shipping, province: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent">
-                        <option value="">Select Province</option>
+                      <select required value={shipping.province} onChange={e => setShipping({ ...shipping, province: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm">
+                        <option value="">Select</option>
                         <option value="Gauteng">Gauteng</option>
                         <option value="Western Cape">Western Cape</option>
                         <option value="KwaZulu-Natal">KwaZulu-Natal</option>
@@ -382,7 +319,7 @@ const Cart = () => {
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Postal Code *</label>
-                      <input required type="text" value={shipping.postalCode} onChange={e => setShipping({ ...shipping, postalCode: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" placeholder="0001" />
+                      <input required type="text" value={shipping.postalCode} onChange={e => setShipping({ ...shipping, postalCode: e.target.value })} className="w-full rounded border border-input px-3 py-2 text-sm" />
                     </div>
                   </div>
                 </form>
@@ -390,7 +327,6 @@ const Cart = () => {
             )}
           </div>
 
-          {/* RIGHT SIDE: ORDER SUMMARY */}
           <div className="rounded-lg border border-border bg-card p-6 h-fit shadow-sm sticky top-24">
             <h2 className="font-heading text-lg font-bold uppercase text-card-foreground">Order Summary</h2>
             <div className="mt-4 space-y-3 text-sm">
@@ -410,7 +346,6 @@ const Cart = () => {
                 </div>
               </div>
 
-              {/* WALLET CHECKBOX */}
               {checkoutStep === 2 && walletBalance > 0 && (
                 <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
                   <label className="flex items-center gap-3 cursor-pointer">
@@ -430,7 +365,6 @@ const Cart = () => {
                 </div>
               )}
 
-              {/* Final Amount Due Section */}
               {checkoutStep === 2 && (
                 <div className="mt-4 bg-slate-50 p-4 rounded-lg border border-border">
                   {useWallet && walletDeduction > 0 && (
@@ -448,7 +382,6 @@ const Cart = () => {
 
             </div>
 
-            {/* Dynamic Button based on step */}
             {checkoutStep === 1 ? (
               <button
                 onClick={handleProceedToShipping}
@@ -458,7 +391,6 @@ const Cart = () => {
               </button>
             ) : (
               <div className="mt-6 space-y-4">
-                {/* LEGAL AGREEMENT CHECKBOX */}
                 <label className="flex items-start gap-2 cursor-pointer bg-slate-50 p-3 rounded border border-border">
                   <input
                     type="checkbox"

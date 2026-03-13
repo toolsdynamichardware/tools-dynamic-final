@@ -6,38 +6,44 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. Handle CORS (Allows your React app to talk to this function)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 2. Get the token and amount sent from your React Cart
-    const { token, amountInCents } = await req.json()
+    const { amountInCents, currency } = await req.json()
     
-    // 3. Get your secure Secret Key
-    const yocoSecretKey = Deno.env.get('YOCO_SECRET_KEY')
+    // CORRECT WAY TO APPLY THE KEY: Just use the string directly
+  const yocoSecretKey = Deno.env.get('YOCO_LIVE_SECRET_KEY');
 
-    // 4. Tell Yoco to charge the card!
-    const response = await fetch('https://online.yoco.com/v1/charges/', {
+    // YOCO V2 CHECKOUT URL
+    const response = await fetch('https://payments.yoco.com/api/checkouts', {
       method: 'POST',
       headers: {
-        'X-Auth-Secret-Key': yocoSecretKey as string,
+        'Authorization': `Bearer ${yocoSecretKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        token: token,
-        amountInCents: amountInCents,
-        currency: 'ZAR',
+        amount: amountInCents,
+        currency: currency || 'ZAR',
+        // This brings them back to your site after payment
+        successUrl: 'https://toolsdynamics.co.za/account', 
+        cancelUrl: 'https://toolsdynamics.co.za/cart',
       }),
     })
 
     const data = await response.json()
 
-    // 5. Send the result back to React
+    if (!response.ok) {
+      return new Response(JSON.stringify({ error: data.message || "Yoco rejected the payment request" }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
+
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: response.ok ? 200 : 400,
+      status: 200,
     })
   } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), {

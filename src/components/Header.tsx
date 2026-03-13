@@ -86,9 +86,9 @@ const Header = () => {
     <header className="sticky top-0 z-50 bg-navy text-navy-foreground shadow-lg">
       {/* Top bar */}
       <div className="bg-charcoal text-charcoal-foreground">
-        <div className="container flex items-center justify-between py-1.5 text-sm">
+        <div className="container flex items-center justify-between py-1.5 text-xs sm:text-sm">
           <div className="flex items-center gap-2">
-            <Phone className="h-3.5 w-3.5 text-accent" />
+            <Phone className="h-3 sm:h-3.5 w-3 sm:w-3.5 text-accent" />
             <span>Call us: +27 (0) 11 000 0000</span>
           </div>
           <span className="hidden sm:block">Free delivery on orders over R1,500</span>
@@ -96,27 +96,28 @@ const Header = () => {
       </div>
 
       {/* Main nav */}
-      <div className="container flex items-center justify-between py-4">
+      <div className="container flex items-center justify-between py-3 sm:py-4">
 
-        {/* LOGO SECTION */}
-        <Link to="/" className="flex items-center gap-2">
-          {/* This image tag points to the logo.png file in your public folder */}
+        {/* LOGO SECTION - MOBILE OPTIMIZED BUT MASSIVE ON DESKTOP */}
+        <Link to="/" className="flex items-center gap-2 sm:gap-4 lg:gap-6 shrink-0 mr-2 sm:mr-4">
           <img
             src={logo}
             alt="Tools Dynamic Logo"
-            className="h-12 w-auto object-contain"
+            className="h-12 sm:h-20 lg:h-28 w-auto object-contain drop-shadow-lg transition-transform hover:scale-105"
           />
 
-          {/* If your logo image already has the text "Tools Dynamic" inside it, 
-              you can safely delete this entire div below! */}
-          <div className="leading-tight hidden sm:block">
-            <span className="font-heading text-lg font-bold tracking-wide">TOOLS DYNAMIC</span>
-            <span className="block text-xs text-steel opacity-80">& HARDWARE</span>
+          <div className="flex flex-col justify-center leading-none">
+            <span className="font-heading text-lg sm:text-4xl lg:text-5xl font-black tracking-widest text-white drop-shadow-md whitespace-nowrap">
+              TOOLS DYNAMIC
+            </span>
+            <span className="mt-1 sm:mt-2 font-heading text-[8px] sm:text-xs lg:text-base font-bold tracking-[0.15em] sm:tracking-[0.3em] lg:tracking-[0.4em] text-accent uppercase">
+              & Hardware Store
+            </span>
           </div>
         </Link>
 
         {/* Desktop Nav Links */}
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="hidden items-center gap-4 lg:gap-8 xl:flex">
           {navLinks.map(link => (
             <Link
               key={link.to}
@@ -130,17 +131,17 @@ const Header = () => {
         </nav>
 
         {/* Right Side Icons & Actions */}
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-3 sm:gap-5">
 
           <Link to="/shop" className="text-steel transition-colors hover:text-accent" aria-label="Search">
-            <Search className="h-5 w-5" />
+            <Search className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7" />
           </Link>
 
           {/* WISHLIST BUTTON */}
           <Link to="/wishlist" className="relative text-steel transition-colors hover:text-accent" aria-label="Wishlist">
-            <Heart className="h-5 w-5" />
+            <Heart className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7" />
             {wishlistCount > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-navy transition-all duration-300 scale-in">
+              <span className="absolute -right-1.5 -top-1.5 sm:-right-2 sm:-top-2 flex h-3.5 w-3.5 sm:h-4 sm:w-4 items-center justify-center rounded-full bg-accent text-[9px] sm:text-[10px] font-bold text-navy transition-all duration-300 scale-in">
                 {wishlistCount}
               </span>
             )}
@@ -148,9 +149,9 @@ const Header = () => {
 
           {/* CART BUTTON */}
           <Link to="/cart" className="relative text-steel transition-colors hover:text-accent" aria-label="Cart">
-            <ShoppingCart className="h-5 w-5" />
+            <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7" />
             {totalItems > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground transition-all duration-300">
+              <span className="absolute -right-1.5 -top-1.5 sm:-right-2 sm:-top-2 flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-accent text-[10px] sm:text-xs font-bold text-accent-foreground transition-all duration-300">
                 {totalItems}
               </span>
             )}
@@ -162,10 +163,10 @@ const Header = () => {
               // If Logged In: Show Account & Logout
               <>
                 <Link to="/account" className="flex items-center gap-2 text-sm font-semibold text-steel hover:text-accent transition-colors">
-                  <User className="h-4 w-4" /> Account
+                  <User className="h-4 w-4 lg:h-5 lg:w-5" /> Account
                 </Link>
                 <button onClick={handleLogout} className="text-steel hover:text-red-400 transition-colors" title="Log Out">
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="h-4 w-4 lg:h-5 lg:w-5" />
                 </button>
               </>
             ) : (
@@ -174,7 +175,7 @@ const Header = () => {
                 <Link to="/login" className="font-heading text-sm font-bold uppercase tracking-wider text-steel transition-colors hover:text-accent">
                   Login
                 </Link>
-                <Link to="/register" className="rounded bg-accent px-4 py-2 font-heading text-xs font-bold uppercase tracking-wider text-navy transition-all hover:bg-accent/90 hover:shadow-md">
+                <Link to="/register" className="rounded bg-accent px-4 lg:px-5 py-2 lg:py-2.5 font-heading text-xs lg:text-sm font-bold uppercase tracking-wider text-navy transition-all hover:bg-accent/90 hover:shadow-md">
                   Register
                 </Link>
               </>
@@ -183,18 +184,18 @@ const Header = () => {
 
           {/* Mobile Menu Toggle */}
           <button
-            className="text-steel md:hidden ml-2"
+            className="text-steel xl:hidden ml-1 sm:ml-2"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label="Toggle menu"
           >
-            {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            {mobileOpen ? <X className="h-6 w-6 sm:h-7 sm:w-7" /> : <Menu className="h-6 w-6 sm:h-7 sm:w-7" />}
           </button>
         </div>
       </div>
 
       {/* Mobile nav (Slide down) */}
       {mobileOpen && (
-        <nav className="border-t border-charcoal bg-navy px-4 pb-6 md:hidden">
+        <nav className="border-t border-charcoal bg-navy px-4 pb-6 xl:hidden">
           <div className="space-y-1 pt-4">
             {navLinks.map(link => (
               <Link
