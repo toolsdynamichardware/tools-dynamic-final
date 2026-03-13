@@ -13,8 +13,15 @@ serve(async (req) => {
   try {
     const { amountInCents, currency } = await req.json()
     
-    // CORRECT WAY TO APPLY THE KEY: Just use the string directly
-  const yocoSecretKey = Deno.env.get('YOCO_LIVE_SECRET_KEY');
+    // Fetch the secure key from Supabase Vault
+    const yocoSecretKey = Deno.env.get('YOCO_LIVE_SECRET_KEY');
+
+    if (!yocoSecretKey) {
+        return new Response(JSON.stringify({ error: "The secret key is missing from Supabase." }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+        });
+    }
 
     // YOCO V2 CHECKOUT URL
     const response = await fetch('https://payments.yoco.com/api/checkouts', {
@@ -26,7 +33,6 @@ serve(async (req) => {
       body: JSON.stringify({
         amount: amountInCents,
         currency: currency || 'ZAR',
-        // This brings them back to your site after payment
         successUrl: 'https://toolsdynamics.co.za/account', 
         cancelUrl: 'https://toolsdynamics.co.za/cart',
       }),
@@ -34,13 +40,15 @@ serve(async (req) => {
 
     const data = await response.json()
 
+    // If Yoco rejects it, send the exact error text back to React safely
     if (!response.ok) {
-      return new Response(JSON.stringify({ error: data.message || "Yoco rejected the payment request" }), {
+      return new Response(JSON.stringify({ error: data.message || JSON.stringify(data) || "Yoco rejected the payment request" }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status: 200, 
       })
     }
 
+    // Success! Send URL back
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
@@ -48,7 +56,7 @@ serve(async (req) => {
   } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
+      status: 200,
     })
   }
 })
